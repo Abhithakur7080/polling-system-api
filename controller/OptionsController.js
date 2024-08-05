@@ -1,62 +1,80 @@
-const Option=require('../models/options');
-const Question= require('../models/questions');
-module.exports.create=async function(req,res){
-    // in this we will create the options to the id given question 
-    console.log(req.body,req.params.id)
-    const opt=await Option.create({
-        option:req.body.content,
-        question:req.params.id,
-        // 
-    })
-    // it is for adding the vote to option of the id that is given by mongodb by update query and using the string interpolition
-    const updateOpt=await Option.findByIdAndUpdate(opt._id,{"add_vote":`http://localhost:3000/api/v1/options/${opt._id}/add_vote`})
-    updateOpt.save()
-    // now searching the question so that we can append the option in question-->option array
-    const ques=await Question.findById(req.params.id);
-    if(ques){
-    ques.options.push(updateOpt)
-    ques.save()
-    console.log(ques)
-    res.send(ques) 
+const Option = require('../models/options');
+const Question = require('../models/questions');
 
-    }
-    else{
-        res.send('question does not exists')
-    }
-}
+module.exports.create = async function(req, res) {
+    try {
+        // Check if the required fields are present in the request body
+        if (!req.body.option) {
+            console.log("object");
+            return res.status(400).send('Content field is required');
+        }
 
-module.exports.add_vote=async function(req,res){
-    // in this votes will be added to the particular option of the question
-    console.log(req.params.id)
-    // this the increment query in which the vote is incremented by one 
-    const opt=await Option.findByIdAndUpdate(req.params.id,{ $inc: { vote: 1 }})
-    if(opt){
-        await opt.save();
-        console.log(opt);
-        res.send(opt)
-    }
-    // handling the bad requests
-    else{
-        res.send('option does not exits')
-    }
-}
+        // Create a new option
+        const opt = await Option.create({
+            option: req.body.option,
+            question: req.params.id
+        });
 
-module.exports.delete=async function(req,res){
-    // delete the id option 
-    console.log('id',req.params.id);
-    const opt=await Option.findById(req.params.id);
-    if(opt){
-        const quesId=opt.question;
-        // finding the question to which the option is deleted and removing that option from its option array
-        const ques=await Question.findByIdAndUpdate(quesId,{$pull:{options:req.params.id}});
-        // now absolutely deleting that option
-        await Option.findByIdAndDelete(req.params.id)
+        // Update the option with the add_vote URL
+        const updateOpt = await Option.findByIdAndUpdate(opt._id, { "add_vote": `http://localhost:3000/api/v1/options/${opt._id}/add_vote` }, { new: true });
+        
+        // Save the updated option
+        await updateOpt.save();
 
-        console.log(ques);
-        res.send('option deleted')
+        // Find the related question and append the option to its options array
+        const ques = await Question.findById(req.params.id);
+        if (ques) {
+            ques.options.push(updateOpt);
+            await ques.save();
+            console.log('Updated Question:', ques);
+            res.send(ques);
+        } else {
+            res.status(404).send('Question does not exist');
+        }
+    } catch (err) {
+        console.error('Error:', err);
+        res.status(500).send('Server Error');
     }
-    // handling the bad request
-    else{
-        res.send('id not exists')
+};
+
+module.exports.add_vote = async function(req, res) {
+    try {
+        // Increment the vote count for the option
+        const opt = await Option.findByIdAndUpdate(req.params.id, { $inc: { vote: 1 } }, { new: true });
+
+        if (opt) {
+            await opt.save();
+            console.log('Updated Option:', opt);
+            res.send(opt);
+        } else {
+            res.status(404).send('Option does not exist');
+        }
+    } catch (err) {
+        console.error('Error:', err);
+        res.status(500).send('Server Error');
     }
-}
+};
+
+module.exports.delete = async function(req, res) {
+    try {
+        const opt = await Option.findById(req.params.id);
+
+        if (opt) {
+            const quesId = opt.question;
+
+            // Remove the option from the related question's options array
+            const ques = await Question.findByIdAndUpdate(quesId, { $pull: { options: req.params.id } });
+
+            // Delete the option
+            await Option.findByIdAndDelete(req.params.id);
+
+            console.log('Updated Question:', ques);
+            res.send('Option deleted');
+        } else {
+            res.status(404).send('Option ID does not exist');
+        }
+    } catch (err) {
+        console.error('Error:', err);
+        res.status(500).send('Server Error');
+    }
+};
